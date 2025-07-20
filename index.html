@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DineEase - Smart Restaurant Management</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .menu-item-img {
+            height: 120px;
+            object-fit: cover;
+        }
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        @media (max-width: 640px) {
+            .menu-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-teal-600 text-white p-4">
+            <div class="container mx-auto flex justify-between items-center">
+                <h1 class="text-2xl font-bold">DineEase</h1>
+                <div class="flex items-center gap-4">
+                    <span>Table #{{ tableNumber }}</span>
+                    <button @click="toggleWaiter" class="bg-white text-teal-600 px-4 py-2 rounded-full">
+                        <i class="bi bi-bell"></i> Call Waiter
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto p-4">
+            <!-- Categories -->
+            <div class="flex overflow-x-auto gap-4 mb-6 pb-2">
+                <button v-for="category in categories" 
+                        :key="category"
+                        @click="selectedCategory = category"
+                        :class="['px-4 py-2 rounded-full whitespace-nowrap', 
+                                selectedCategory === category ? 'bg-teal-600 text-white' : 'bg-gray-200']">
+                    {{ category }}
+                </button>
+            </div>
+
+            <!-- Menu Items Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 menu-grid">
+                <div v-for="item in filteredMenu" :key="item.id" 
+                     class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <img :src="item.image" :alt="item.name" class="w-full menu-item-img">
+                    <div class="p-4">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-semibold">{{ item.name }}</h3>
+                            <span class="text-teal-600 font-bold">${{ item.price }}</span>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">{{ item.description }}</p>
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <button @click="decrementQuantity(item)" 
+                                        class="bg-gray-200 px-2 py-1 rounded">-</button>
+                                <span>{{ getItemQuantity(item) }}</span>
+                                <button @click="incrementQuantity(item)" 
+                                        class="bg-gray-200 px-2 py-1 rounded">+</button>
+                            </div>
+                            <button @click="addToCart(item)" 
+                                    class="bg-teal-600 text-white px-4 py-2 rounded">
+                                Add to Order
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cart/Order Summary -->
+            <div v-if="cart.length > 0" class="fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t p-4">
+                <div class="container mx-auto">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="font-bold">{{ cart.length }} items</span>
+                            <span class="mx-2">|</span>
+                            <span class="font-bold">Total: ${{ total.toFixed(2) }}</span>
+                        </div>
+                        <button @click="placeOrder" 
+                                class="bg-teal-600 text-white px-6 py-2 rounded-full">
+                            Place Order
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Status Modal -->
+            <div v-if="showOrderStatus" 
+                 class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                    <h2 class="text-xl font-bold mb-4">Order Status</h2>
+                    <div class="space-y-4">
+                        <div v-for="(item, index) in orderStatus" :key="index">
+                            <div class="flex justify-between mb-2">
+                                <span>{{ item.name }}</span>
+                                <span class="text-teal-600">{{ item.status }}</span>
+                            </div>
+                            <div class="bg-gray-200 rounded-full h-2">
+                                <div class="bg-teal-600 h-2 rounded-full progress-bar" 
+                                     :style="{ width: item.progress + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-between">
+                        <button @click="payOrder" 
+                                class="bg-teal-600 text-white px-6 py-2 rounded-full">
+                            Pay Now
+                        </button>
+                        <button @click="showOrderStatus = false" 
+                                class="bg-gray-200 px-6 py-2 rounded-full">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    tableNumber: Math.floor(Math.random() * 20) + 1,
+                    categories: ['All', 'Starters', 'Main Course', 'Desserts', 'Beverages'],
+                    selectedCategory: 'All',
+                    menu: [
+                        {
+                            id: 1,
+                            name: 'Classic Burger',
+                            price: 12.99,
+                            category: 'Main Course',
+                            description: 'Juicy beef patty with lettuce, tomato, and special sauce',
+                            image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500'
+                        },
+                        {
+                            id: 2,
+                            name: 'Caesar Salad',
+                            price: 8.99,
+                            category: 'Starters',
+                            description: 'Fresh romaine lettuce with parmesan and croutons',
+                            image: 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=500'
+                        },
+                        // Add more menu items as needed
+                    ],
+                    cart: [],
+                    showOrderStatus: false,
+                    orderStatus: [],
+                }
+            },
+            computed: {
+                filteredMenu() {
+                    return this.selectedCategory === 'All' 
+                        ? this.menu 
+                        : this.menu.filter(item => item.category === this.selectedCategory)
+                },
+                total() {
+                    return this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+                }
+            },
+            methods: {
+                getItemQuantity(item) {
+                    const cartItem = this.cart.find(i => i.id === item.id)
+                    return cartItem ? cartItem.quantity : 0
+                },
+                incrementQuantity(item) {
+                    const cartItem = this.cart.find(i => i.id === item.id)
+                    if (cartItem) {
+                        cartItem.quantity++
+                    } else {
+                        this.cart.push({ ...item, quantity: 1 })
+                    }
+                },
+                decrementQuantity(item) {
+                    const cartItem = this.cart.find(i => i.id === item.id)
+                    if (cartItem && cartItem.quantity > 0) {
+                        cartItem.quantity--
+                        if (cartItem.quantity === 0) {
+                            this.cart = this.cart.filter(i => i.id !== item.id)
+                        }
+                    }
+                },
+                addToCart(item) {
+                    this.incrementQuantity(item)
+                },
+                placeOrder() {
+                    this.orderStatus = this.cart.map(item => ({
+                        name: item.name,
+                        status: 'Preparing',
+                        progress: 0
+                    }))
+                    this.showOrderStatus = true
+                    
+                    // Simulate order progress
+                    this.orderStatus.forEach((item, index) => {
+                        let progress = 0
+                        const interval = setInterval(() => {
+                            progress += 2
+                            item.progress = progress
+                            
+                            if (progress >= 100) {
+                                clearInterval(interval)
+                                item.status = 'Ready'
+                            } else if (progress >= 60) {
+                                item.status = 'Almost Ready'
+                            }
+                        }, 1000 + (index * 500))
+                    })
+                },
+                payOrder() {
+                    alert('Payment processing... Thank you for dining with us!')
+                    this.cart = []
+                    this.showOrderStatus = false
+                },
+                toggleWaiter() {
+                    alert('Waiter has been notified and will arrive shortly!')
+                }
+            }
+        }).mount('#app')
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
